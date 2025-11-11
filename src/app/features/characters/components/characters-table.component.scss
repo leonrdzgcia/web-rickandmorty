@@ -66,6 +66,29 @@
   }
 }
 
+.loading-more-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+
+  mat-spinner {
+    margin-bottom: 12px;
+  }
+
+  p {
+    color: #666;
+    font-size: 14px;
+  }
+}
+
+.scroll-sentinel {
+  height: 1px;
+  width: 100%;
+  visibility: hidden;
+}
+
 .table-container {
   overflow-x: auto;
   max-width: 100%;

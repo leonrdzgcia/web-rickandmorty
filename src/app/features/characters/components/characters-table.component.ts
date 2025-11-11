@@ -1,10 +1,10 @@
-import { Component, OnInit, OnDestroy, inject, signal, computed, ViewChild, AfterViewInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, inject, signal, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
-import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatPaginatorModule } from '@angular/material/paginator';
 import { MatSortModule, Sort, MatSort } from '@angular/material/sort';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -16,7 +16,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
-import { Subject, debounceTime, distinctUntilChanged, takeUntil, switchMap, startWith, BehaviorSubject, combineLatest, map, tap } from 'rxjs';
+import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 
 import { RickMortyApiService } from '../../../core/services/rick-morty-api.service';
 import { Character, CharacterFilters, CharacterStatus, CharacterGender } from '../../../core/models/character.model';
@@ -44,25 +44,31 @@ import { Character, CharacterFilters, CharacterStatus, CharacterGender } from '.
   templateUrl: './characters-table.component.html',
   styleUrls: ['./characters-table.component.scss']
 })
-export class CharactersTableComponent implements OnInit, OnDestroy {
+export class CharactersTableComponent implements OnInit, OnDestroy, AfterViewInit {
   private readonly apiService = inject(RickMortyApiService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly destroy$ = new Subject<void>();
 
+  // ViewChild para detectar el scroll sentinel
+  @ViewChild('scrollSentinel') scrollSentinel?: ElementRef;
+  @ViewChild('scrollSentinelMobile') scrollSentinelMobile?: ElementRef;
+
   // Signals para estado reactivo
   characters = signal<Character[]>([]);
   loading = signal<boolean>(false);
+  loadingMore = signal<boolean>(false);
   totalCount = signal<number>(0);
   totalPages = signal<number>(0);
+  currentPage = signal<number>(1);
+  hasMore = signal<boolean>(true);
   isMobile = signal<boolean>(false);
   favorites = signal<number[]>([]);
 
   // Configuración de la tabla
   displayedColumns: string[] = ['favorite', 'image', 'name', 'status', 'species', 'gender', 'origin', 'location', 'created', 'episode'];
   pageSize = 20; // La API de Rick & Morty devuelve 20 resultados por página
-  currentPage = signal<number>(0);
 
   // Formulario de filtros
   filtersForm = new FormGroup({
@@ -78,14 +84,19 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   statusOptions: (CharacterStatus | '')[] = ['', 'Alive', 'Dead', 'unknown'];
   genderOptions: (CharacterGender | '')[] = ['', 'Female', 'Male', 'Genderless', 'unknown'];
 
-  // Subject para manejar cambios de página
-  private pageChange$ = new BehaviorSubject<number>(1);
+  // IntersectionObserver para infinite scroll
+  private intersectionObserver?: IntersectionObserver;
+  private isLoadingPage = false;
 
   ngOnInit(): void {
     this.loadFavorites();
-    this.loadFiltersFromUrl();
-    this.setupDataStream();
+    this.loadInitialData();
+    this.setupFiltersObserver();
     this.setupBreakpointObserver();
+  }
+
+  ngAfterViewInit(): void {
+    this.setupIntersectionObserver();
   }
 
   /**
@@ -96,19 +107,54 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
       .observe([Breakpoints.Handset, Breakpoints.Tablet])
       .pipe(takeUntil(this.destroy$))
       .subscribe(result => {
+        const wasMobile = this.isMobile();
         this.isMobile.set(result.matches);
+
+        // Reconfigurar observer si cambió el tipo de dispositivo
+        if (wasMobile !== result.matches) {
+          this.intersectionObserver?.disconnect();
+          setTimeout(() => this.setupIntersectionObserver(), 100);
+        }
       });
   }
 
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    this.intersectionObserver?.disconnect();
   }
 
   /**
-   * Carga los filtros desde los query params de la URL
+   * Configura el IntersectionObserver para infinite scroll
    */
-  private loadFiltersFromUrl(): void {
+  private setupIntersectionObserver(): void {
+    const options = {
+      root: null,
+      rootMargin: '100px',
+      threshold: 0.1
+    };
+
+    this.intersectionObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && this.hasMore() && !this.isLoadingPage) {
+          this.loadNextPage();
+        }
+      });
+    }, options);
+
+    // Observar el sentinel apropiado según el dispositivo
+    setTimeout(() => {
+      const sentinel = this.isMobile() ? this.scrollSentinelMobile : this.scrollSentinel;
+      if (sentinel?.nativeElement) {
+        this.intersectionObserver?.observe(sentinel.nativeElement);
+      }
+    }, 100);
+  }
+
+  /**
+   * Carga los datos iniciales
+   */
+  private loadInitialData(): void {
     const params = this.route.snapshot.queryParams;
 
     // Parsear los valores de los query params
@@ -121,23 +167,16 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
       createdEndDate: params['createdEndDate'] ? new Date(params['createdEndDate']) : null
     };
 
-    // Actualizar la página actual si existe en la URL
-    if (params['page']) {
-      const page = parseInt(params['page'], 10);
-      if (!isNaN(page) && page > 0) {
-        this.currentPage.set(page - 1); // Angular Material usa índice base 0
-        this.pageChange$.next(page);
-      }
-    }
-
     // Establecer los valores en el formulario
     this.filtersForm.patchValue(filters, { emitEvent: false });
+    // Cargar la primera página
+    this.loadCharacters(1);
   }
 
   /**
    * Actualiza los query params de la URL con los filtros actuales
    */
-  private updateUrlParams(filters: any, page: number): void {
+  private updateUrlParams(filters: any): void {
     const queryParams: any = {};
 
     // Solo agregar parámetros no vacíos
@@ -151,7 +190,6 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
     if (filters.createdEndDate) {
       queryParams['createdEndDate'] = new Date(filters.createdEndDate).toISOString().split('T')[0];
     }
-    if (page > 1) queryParams['page'] = page;
 
     // Actualizar la URL sin recargar la página
     this.router.navigate([], {
@@ -163,65 +201,92 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Configura el stream de datos reactivo combinando filtros y paginación
+   * Configura el observador de cambios en filtros
    */
-  private setupDataStream(): void {
+  private setupFiltersObserver(): void {
     // Observar cambios en el formulario con debounce
-    const filters$ = this.filtersForm.valueChanges.pipe(
-      startWith(this.filtersForm.value),
-      debounceTime(300), // Esperar 400ms después de que el usuario deje de escribir
-      distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
-      tap(() => {
-        // Resetear a la primera página cuando cambian los filtros
-        this.currentPage.set(0);
-        this.pageChange$.next(1);
-      })
-    );
-
-    // Combinar filtros y paginación
-    combineLatest([filters$, this.pageChange$])
+    this.filtersForm.valueChanges
       .pipe(
-        tap(([filters, page]) => {
-          this.loading.set(true);
-          // Actualizar URL con los filtros y página actual
-          this.updateUrlParams(filters, page);
-        }),
-        switchMap(([filters, page]) => {
-          const apiFilters: CharacterFilters = {
-            name: filters.name || undefined,
-            status: filters.status || undefined,
-            species: filters.species || undefined,
-            gender: filters.gender || undefined,
-            page: page
-          };
-          return this.apiService.getCharacters(apiFilters);
-        }),
+        debounceTime(300),
+        distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
         takeUntil(this.destroy$)
       )
+      .subscribe(() => {
+        // Resetear a la primera página cuando cambian los filtros
+        this.currentPage.set(1);
+        this.characters.set([]);
+        this.hasMore.set(true);
+        this.updateUrlParams(this.filtersForm.value);
+        this.loadCharacters(1);
+      });
+  }
+
+  /**
+   * Carga personajes de una página específica
+   */
+  private loadCharacters(page: number, append: boolean = false): void {
+    if (this.isLoadingPage) return;
+
+    this.isLoadingPage = true;
+
+    if (page === 1) {
+      this.loading.set(true);
+    } else {
+      this.loadingMore.set(true);
+    }
+
+    const filters = this.filtersForm.value;
+    const apiFilters: CharacterFilters = {
+      name: filters.name || undefined,
+      status: filters.status || undefined,
+      species: filters.species || undefined,
+      gender: filters.gender || undefined,
+      page: page
+    };
+
+    this.apiService.getCharacters(apiFilters)
+      .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
           // Aplicar filtro de fecha client-side
           const filteredCharacters = this.filterByDateRange(response.results);
-          this.characters.set(filteredCharacters);
+
+          // Acumular o reemplazar personajes
+          if (append) {
+            this.characters.set([...this.characters(), ...filteredCharacters]);
+          } else {
+            this.characters.set(filteredCharacters);
+          }
+
           this.totalCount.set(response.info.count);
           this.totalPages.set(response.info.pages);
+          this.currentPage.set(page);
+          this.hasMore.set(page < response.info.pages);
+
           this.loading.set(false);
+          this.loadingMore.set(false);
+          this.isLoadingPage = false;
         },
         error: (error) => {
           console.error('Error loading characters:', error);
-          this.characters.set([]);
+          if (!append) {
+            this.characters.set([]);
+          }
           this.loading.set(false);
+          this.loadingMore.set(false);
+          this.isLoadingPage = false;
+          this.hasMore.set(false);
         }
       });
   }
 
   /**
-   * Maneja el cambio de página del paginator
+   * Carga la siguiente página de personajes (para infinite scroll)
    */
-  onPageChange(event: PageEvent): void {
-    this.currentPage.set(event.pageIndex);
-    // La API usa páginas base 1, Angular Material usa base 0
-    this.pageChange$.next(event.pageIndex + 1);
+  loadNextPage(): void {
+    if (!this.hasMore() || this.isLoadingPage) return;
+    const nextPage = this.currentPage() + 1;
+    this.loadCharacters(nextPage, true);
   }
 
   /**

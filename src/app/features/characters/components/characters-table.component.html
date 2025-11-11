@@ -181,15 +181,17 @@
           </table>
         </div>
 
-        <!-- Paginador -->
-        <mat-paginator
-          [length]="totalCount()"
-          [pageSize]="pageSize"
-          [pageIndex]="currentPage()"
-          [pageSizeOptions]="[]"
-          (page)="onPageChange($event)"
-          showFirstLastButtons>
-        </mat-paginator>
+        <!-- Indicador de carga de más datos -->
+        @if (loadingMore()) {
+          <div class="loading-more-container">
+            <mat-spinner diameter="40"></mat-spinner>
+            <p>Loading more characters...</p>
+          </div>
+        }
+
+        @if (hasMore() && !loading()) {
+          <div class="scroll-sentinel" #scrollSentinel></div>
+        }
         } @else {
           <!-- Vista de tarjetas para móvil -->
           <div class="cards-container">
@@ -241,15 +243,17 @@
             }
           </div>
 
-          <!-- Paginador para móvil -->
-          <mat-paginator
-            [length]="totalCount()"
-            [pageSize]="pageSize"
-            [pageIndex]="currentPage()"
-            [pageSizeOptions]="[]"
-            (page)="onPageChange($event)"
-            showFirstLastButtons>
-          </mat-paginator>
+          <!-- mas datos -->
+          @if (loadingMore()) {
+            <div class="loading-more-container">
+              <mat-spinner diameter="40"></mat-spinner>
+              <p>Loading more characters...</p>
+            </div>
+          }
+          <!-- infinite scroll en móvil -->
+          @if (hasMore() && !loading()) {
+            <div class="scroll-sentinel" #scrollSentinelMobile></div>
+          }
         }
       } @else {
         <div class="no-results">
