@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy, inject, signal, computed, ViewChild, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { Router, ActivatedRoute } from '@angular/router';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatSortModule, Sort, MatSort } from '@angular/material/sort';
@@ -44,6 +45,8 @@ import { Character, CharacterFilters, CharacterStatus, CharacterGender } from '.
 })
 export class CharactersTableComponent implements OnInit, OnDestroy {
   private readonly apiService = inject(RickMortyApiService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly destroy$ = new Subject<void>();
 
   // Signals para estado reactivo
@@ -75,12 +78,70 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   private pageChange$ = new BehaviorSubject<number>(1);
 
   ngOnInit(): void {
+    this.loadFiltersFromUrl();
     this.setupDataStream();
   }
 
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  /**
+   * Carga los filtros desde los query params de la URL
+   */
+  private loadFiltersFromUrl(): void {
+    const params = this.route.snapshot.queryParams;
+
+    // Parsear los valores de los query params
+    const filters: any = {
+      name: params['name'] || '',
+      status: params['status'] || '',
+      species: params['species'] || '',
+      gender: params['gender'] || '',
+      createdStartDate: params['createdStartDate'] ? new Date(params['createdStartDate']) : null,
+      createdEndDate: params['createdEndDate'] ? new Date(params['createdEndDate']) : null
+    };
+
+    // Actualizar la página actual si existe en la URL
+    if (params['page']) {
+      const page = parseInt(params['page'], 10);
+      if (!isNaN(page) && page > 0) {
+        this.currentPage.set(page - 1); // Angular Material usa índice base 0
+        this.pageChange$.next(page);
+      }
+    }
+
+    // Establecer los valores en el formulario
+    this.filtersForm.patchValue(filters, { emitEvent: false });
+  }
+
+  /**
+   * Actualiza los query params de la URL con los filtros actuales
+   */
+  private updateUrlParams(filters: any, page: number): void {
+    const queryParams: any = {};
+
+    // Solo agregar parámetros no vacíos
+    if (filters.name) queryParams['name'] = filters.name;
+    if (filters.status) queryParams['status'] = filters.status;
+    if (filters.species) queryParams['species'] = filters.species;
+    if (filters.gender) queryParams['gender'] = filters.gender;
+    if (filters.createdStartDate) {
+      queryParams['createdStartDate'] = new Date(filters.createdStartDate).toISOString().split('T')[0];
+    }
+    if (filters.createdEndDate) {
+      queryParams['createdEndDate'] = new Date(filters.createdEndDate).toISOString().split('T')[0];
+    }
+    if (page > 1) queryParams['page'] = page;
+
+    // Actualizar la URL sin recargar la página
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: queryParams,
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
   }
 
   /**
@@ -102,7 +163,11 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
     // Combinar filtros y paginación
     combineLatest([filters$, this.pageChange$])
       .pipe(
-        tap(() => this.loading.set(true)),
+        tap(([filters, page]) => {
+          this.loading.set(true);
+          // Actualizar URL con los filtros y página actual
+          this.updateUrlParams(filters, page);
+        }),
         switchMap(([filters, page]) => {
           const apiFilters: CharacterFilters = {
             name: filters.name || undefined,
@@ -152,6 +217,13 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
       gender: '',
       createdStartDate: null,
       createdEndDate: null
+    });
+
+    // Limpiar los query params de la URL
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: {},
+      replaceUrl: true
     });
   }
 
