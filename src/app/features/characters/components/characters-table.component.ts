@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy, inject, signal, computed, ViewChild, Afte
 import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
+import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatSortModule, Sort, MatSort } from '@angular/material/sort';
@@ -47,6 +48,7 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   private readonly apiService = inject(RickMortyApiService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly destroy$ = new Subject<void>();
 
   // Signals para estado reactivo
@@ -54,6 +56,7 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   loading = signal<boolean>(false);
   totalCount = signal<number>(0);
   totalPages = signal<number>(0);
+  isMobile = signal<boolean>(false);
 
   // Configuración de la tabla
   displayedColumns: string[] = ['image', 'name', 'status', 'species', 'gender', 'origin', 'location', 'created', 'episode'];
@@ -80,6 +83,19 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadFiltersFromUrl();
     this.setupDataStream();
+    this.setupBreakpointObserver();
+  }
+
+  /**
+   * Configura el observador de breakpoints para detectar dispositivos móviles
+   */
+  private setupBreakpointObserver(): void {
+    this.breakpointObserver
+      .observe([Breakpoints.Handset, Breakpoints.Tablet])
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(result => {
+        this.isMobile.set(result.matches);
+      });
   }
 
   ngOnDestroy(): void {

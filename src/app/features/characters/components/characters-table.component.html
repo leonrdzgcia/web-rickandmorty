@@ -79,8 +79,10 @@
       </div>
     } @else {
       @if (characters().length > 0) {
-        <div class="table-container">
-          <table mat-table [dataSource]="characters()" class="characters-table">
+        <!-- Vista de tabla para desktop -->
+        @if (!isMobile()) {
+          <div class="table-container">
+            <table mat-table [dataSource]="characters()" class="characters-table">
             <!-- Columna de imagen -->
             <ng-container matColumnDef="image">
               <th mat-header-cell *matHeaderCellDef>Image</th>
@@ -171,6 +173,62 @@
           (page)="onPageChange($event)"
           showFirstLastButtons>
         </mat-paginator>
+        } @else {
+          <!-- Vista de tarjetas para móvil -->
+          <div class="cards-container">
+            @for (character of characters(); track character.id) {
+              <mat-card class="character-card">
+                <mat-card-header>
+                  <img mat-card-avatar [src]="character.image" [alt]="character.name" class="card-avatar">
+                  <mat-card-title>{{ character.name }}</mat-card-title>
+                  <mat-card-subtitle>
+                    <span class="status-badge" [ngClass]="getStatusClass(character.status)">
+                      {{ character.status }}
+                    </span>
+                  </mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="card-info">
+                    <div class="info-row">
+                      <mat-icon>science</mat-icon>
+                      <span><strong>Species:</strong> {{ character.species }}</span>
+                    </div>
+                    <div class="info-row">
+                      <mat-icon>wc</mat-icon>
+                      <span><strong>Gender:</strong> {{ character.gender }}</span>
+                    </div>
+                    <div class="info-row">
+                      <mat-icon>place</mat-icon>
+                      <span><strong>Origin:</strong> {{ character.origin.name }}</span>
+                    </div>
+                    <div class="info-row">
+                      <mat-icon>location_on</mat-icon>
+                      <span><strong>Location:</strong> {{ character.location.name }}</span>
+                    </div>
+                    <div class="info-row">
+                      <mat-icon>calendar_today</mat-icon>
+                      <span><strong>Created:</strong> {{ character.created | date:'short' }}</span>
+                    </div>
+                    <div class="info-row">
+                      <mat-icon>tv</mat-icon>
+                      <span><strong>Episodes:</strong> {{ character.episode.length }}</span>
+                    </div>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+            }
+          </div>
+
+          <!-- Paginador para móvil -->
+          <mat-paginator
+            [length]="totalCount()"
+            [pageSize]="pageSize"
+            [pageIndex]="currentPage()"
+            [pageSizeOptions]="[]"
+            (page)="onPageChange($event)"
+            showFirstLastButtons>
+          </mat-paginator>
+        }
       } @else {
         <div class="no-results">
           <mat-icon>search_off</mat-icon>
