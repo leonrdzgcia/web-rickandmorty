@@ -57,6 +57,11 @@
             Clear Filters
           </button>
         }
+
+        <button mat-raised-button color="primary" (click)="exportToCSV()" class="export-button" [disabled]="loading() || characters().length === 0">
+          <mat-icon>download</mat-icon>
+          Export
+        </button>
       </form>
 
       <!-- Información de resultados -->
@@ -83,6 +88,18 @@
         @if (!isMobile()) {
           <div class="table-container">
             <table mat-table [dataSource]="characters()" class="characters-table">
+            <!-- Columna de favoritos -->
+            <ng-container matColumnDef="favorite">
+              <th mat-header-cell *matHeaderCellDef>Favorite</th>
+              <td mat-cell *matCellDef="let character">
+                <button mat-icon-button (click)="toggleFavorite(character.id)" [attr.aria-label]="isFavorite(character.id) ? 'Remove from favorites' : 'Add to favorites'">
+                  <mat-icon [class.favorite-active]="isFavorite(character.id)">
+                    {{ isFavorite(character.id) ? 'favorite' : 'favorite_border' }}
+                  </mat-icon>
+                </button>
+              </td>
+            </ng-container>
+
             <!-- Columna de imagen -->
             <ng-container matColumnDef="image">
               <th mat-header-cell *matHeaderCellDef>Image</th>
@@ -178,6 +195,11 @@
           <div class="cards-container">
             @for (character of characters(); track character.id) {
               <mat-card class="character-card">
+                <button mat-icon-button class="favorite-button-card" (click)="toggleFavorite(character.id)" [attr.aria-label]="isFavorite(character.id) ? 'Remove from favorites' : 'Add to favorites'">
+                  <mat-icon [class.favorite-active]="isFavorite(character.id)">
+                    {{ isFavorite(character.id) ? 'favorite' : 'favorite_border' }}
+                  </mat-icon>
+                </button>
                 <mat-card-header>
                   <img mat-card-avatar [src]="character.image" [alt]="character.name" class="card-avatar">
                   <mat-card-title>{{ character.name }}</mat-card-title>

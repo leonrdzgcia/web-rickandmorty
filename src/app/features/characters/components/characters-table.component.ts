@@ -57,9 +57,10 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   totalCount = signal<number>(0);
   totalPages = signal<number>(0);
   isMobile = signal<boolean>(false);
+  favorites = signal<number[]>([]);
 
   // Configuración de la tabla
-  displayedColumns: string[] = ['image', 'name', 'status', 'species', 'gender', 'origin', 'location', 'created', 'episode'];
+  displayedColumns: string[] = ['favorite', 'image', 'name', 'status', 'species', 'gender', 'origin', 'location', 'created', 'episode'];
   pageSize = 20; // La API de Rick & Morty devuelve 20 resultados por página
   currentPage = signal<number>(0);
 
@@ -81,6 +82,7 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   private pageChange$ = new BehaviorSubject<number>(1);
 
   ngOnInit(): void {
+    this.loadFavorites();
     this.loadFiltersFromUrl();
     this.setupDataStream();
     this.setupBreakpointObserver();
@@ -287,5 +289,94 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   hasActiveFilters(): boolean {
     const values = this.filtersForm.value;
     return !!(values.name || values.status || values.species || values.gender || values.createdStartDate || values.createdEndDate);
+  }
+
+  /**
+   * Carga los favoritos desde localStorage
+   */
+  private loadFavorites(): void {
+    const stored = localStorage.getItem('rickmorty_favorites');
+    console.log('Favoritos localStorage:', stored);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        this.favorites.set(Array.isArray(parsed) ? parsed : []);
+      } catch (error) {
+        this.favorites.set([]);
+      }
+    }
+  }
+
+  /**
+   * Guarda los favoritos en localStorage
+   */
+  private saveFavorites(): void {
+    const favoritesData = this.favorites();
+    localStorage.setItem('rickmorty_favorites', JSON.stringify(favoritesData))
+  }
+
+  /**
+   * Alterna el estado de favorito de un personaje
+   */
+  toggleFavorite(characterId: number): void {
+    const currentFavorites = this.favorites();
+    const index = currentFavorites.indexOf(characterId);
+
+    if (index > -1) {
+      const newFavorites = currentFavorites.filter(id => id !== characterId);
+      this.favorites.set(newFavorites);
+    } else {
+      // Agregar
+      this.favorites.set([...currentFavorites, characterId]);
+    }
+
+    this.saveFavorites();
+  }
+
+  /**
+   * Verifica si un personaje es favorito
+   */
+  isFavorite(characterId: number): boolean {
+    return this.favorites().includes(characterId);
+  }
+
+  /**
+   * Exporta los datos actuales de la tabla a un archivo CSV
+   */
+  exportToCSV(): void {
+    const currentCharacters = this.characters();
+
+    if (currentCharacters.length === 0) {
+      console.warn('No hay datos para exportar');
+      return;
+    }
+    //columnas del CSV
+    const headers = ['Name', 'Status', 'Species', 'Gender', 'Origin', 'Location', 'Created', 'Number of Episodes'];
+
+    const csvContent = [
+      headers.join(','), // Encabezados
+      ...currentCharacters.map(character => {
+        return [
+          `"${character.name}"`,
+          character.status,
+          character.species,
+          character.gender,
+          `"${character.origin.name}"`,
+          `"${character.location.name}"`,
+          new Date(character.created).toLocaleString(),
+          character.episode.length
+        ].join(',');
+      })
+    ].join('\n');
+    // Crear el archivo Blob
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `rick-morty-characters-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 }

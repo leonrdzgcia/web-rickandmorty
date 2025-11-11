@@ -25,8 +25,15 @@
     width: 100%;
   }
 
-  .clear-button {
+  .clear-button,
+  .export-button {
     height: 56px;
+  }
+
+  .export-button {
+    mat-icon {
+      margin-right: 4px;
+    }
   }
 }
 
@@ -258,4 +265,70 @@ mat-paginator {
 .card-avatar {
   border-radius: 50%;
   object-fit: cover;
+}
+
+// Estilos para favoritos
+.favorite-active {
+  color: #e91e63;
+  animation: heartbeat 0.3s ease;
+}
+
+@keyframes heartbeat {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+// Botón de favorito en tabla
+.characters-table {
+  button[mat-icon-button] {
+    transition: transform 0.2s ease;
+
+    &:hover mat-icon {
+      transform: scale(1.1);
+    }
+
+    mat-icon {
+      transition: color 0.2s ease, transform 0.2s ease;
+      color: #999;
+
+      &.favorite-active {
+        color: #e91e63;
+      }
+    }
+  }
+}
+
+// Botón de favorito en tarjetas móviles
+.favorite-button-card {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+  &:hover {
+    background-color: white;
+    transform: scale(1.05);
+  }
+
+  mat-icon {
+    transition: color 0.2s ease;
+    color: #999;
+
+    &.favorite-active {
+      color: #e91e63;
+    }
+  }
+}
+
+.character-card {
+  position: relative;
 }
