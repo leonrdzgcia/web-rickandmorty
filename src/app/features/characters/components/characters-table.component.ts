@@ -1,9 +1,9 @@
-import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed, ViewChild, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { MatTableModule } from '@angular/material/table';
+import { MatTableModule, MatTableDataSource } from '@angular/material/table';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
-import { MatSortModule, Sort } from '@angular/material/sort';
+import { MatSortModule, Sort, MatSort } from '@angular/material/sort';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -12,6 +12,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil, switchMap, startWith, BehaviorSubject, combineLatest, map, tap } from 'rxjs';
 
 import { RickMortyApiService } from '../../../core/services/rick-morty-api.service';
@@ -33,7 +35,9 @@ import { Character, CharacterFilters, CharacterStatus, CharacterGender } from '.
     MatIconModule,
     MatCardModule,
     MatProgressSpinnerModule,
-    MatChipsModule
+    MatChipsModule,
+    MatDatepickerModule,
+    MatNativeDateModule
   ],
   templateUrl: './characters-table.component.html',
   styleUrls: ['./characters-table.component.scss']
@@ -49,7 +53,7 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   totalPages = signal<number>(0);
 
   // Configuración de la tabla
-  displayedColumns: string[] = ['image', 'name', 'status', 'species', 'gender', 'origin', 'location'];
+  displayedColumns: string[] = ['image', 'name', 'status', 'species', 'gender', 'origin', 'location', 'created', 'episode'];
   pageSize = 20; // La API de Rick & Morty devuelve 20 resultados por página
   currentPage = signal<number>(0);
 
@@ -58,7 +62,9 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
     name: new FormControl<string>(''),
     status: new FormControl<CharacterStatus | ''>(''),
     species: new FormControl<string>(''),
-    gender: new FormControl<CharacterGender | ''>('')
+    gender: new FormControl<CharacterGender | ''>(''),
+    createdStartDate: new FormControl<Date | null>(null),
+    createdEndDate: new FormControl<Date | null>(null)
   });
 
   // Opciones para los selects
@@ -84,7 +90,7 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
     // Observar cambios en el formulario con debounce
     const filters$ = this.filtersForm.valueChanges.pipe(
       startWith(this.filtersForm.value),
-      debounceTime(400), // Esperar 400ms después de que el usuario deje de escribir
+      debounceTime(300), // Esperar 400ms después de que el usuario deje de escribir
       distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
       tap(() => {
         // Resetear a la primera página cuando cambian los filtros
@@ -111,7 +117,9 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: (response) => {
-          this.characters.set(response.results);
+          // Aplicar filtro de fecha client-side
+          const filteredCharacters = this.filterByDateRange(response.results);
+          this.characters.set(filteredCharacters);
           this.totalCount.set(response.info.count);
           this.totalPages.set(response.info.pages);
           this.loading.set(false);
@@ -141,7 +149,9 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
       name: '',
       status: '',
       species: '',
-      gender: ''
+      gender: '',
+      createdStartDate: null,
+      createdEndDate: null
     });
   }
 
@@ -153,10 +163,41 @@ export class CharactersTableComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Filtra los personajes por rango de fechas (client-side)
+   */
+  private filterByDateRange(characters: Character[]): Character[] {
+    const startDate = this.filtersForm.get('createdStartDate')?.value;
+    const endDate = this.filtersForm.get('createdEndDate')?.value;
+
+    if (!startDate && !endDate) {
+      return characters;
+    }
+
+    return characters.filter(character => {
+      const charDate = new Date(character.created);
+
+      // Normalizar las fechas al inicio del día para comparación justa
+      if (startDate) {
+        const normalizedStart = new Date(startDate);
+        normalizedStart.setHours(0, 0, 0, 0);
+        if (charDate < normalizedStart) return false;
+      }
+
+      if (endDate) {
+        const normalizedEnd = new Date(endDate);
+        normalizedEnd.setHours(23, 59, 59, 999);
+        if (charDate > normalizedEnd) return false;
+      }
+
+      return true;
+    });
+  }
+
+  /**
    * Verifica si hay filtros activos
    */
   hasActiveFilters(): boolean {
     const values = this.filtersForm.value;
-    return !!(values.name || values.status || values.species || values.gender);
+    return !!(values.name || values.status || values.species || values.gender || values.createdStartDate || values.createdEndDate);
   }
 }

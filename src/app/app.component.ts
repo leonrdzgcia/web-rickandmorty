@@ -15,6 +15,6 @@ import { MatIconModule } from '@angular/material/icon';
   styleUrl: './app.component.scss'
 })
 export class AppComponent {
-  title = 'Rick and Morty Explorer';
+  title = 'Rick & Morty Directory';
   currentYear = new Date().getFullYear();
 }
